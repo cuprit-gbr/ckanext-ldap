@@ -10,6 +10,7 @@ from ckan.common import session
 from ckan.plugins import SingletonPlugin, implements, interfaces, toolkit
 from ckanext.ldap import routes, cli
 from ckanext.ldap.lib.helpers import get_login_action, is_ldap_user
+from ckanext.ldap.routes._helpers import check_ldap_password, get_or_create_ldap_user
 from ckanext.ldap.logic.auth import user_create, user_update, user_reset
 from ckanext.ldap.model.ldap_user import setup as model_setup
 
@@ -194,3 +195,21 @@ def _allowed_auth_mechanisms(v):
     # Only DIGEST-MD5 is supported when the auth method is SASL
     if v.upper() != 'DIGEST-MD5':
         raise ConfigError('Only DIGEST-MD5 is supported as an authentication mechanism')
+
+
+# IAuthenticator
+def authenticate(self, identity):
+    login = identity.get('login')
+    password = identity.get('password')
+
+    if not login or not password:
+        return None
+    try:
+        ldap_user_dict = find_ldap_user(login)
+        if ldap_user_dict and check_ldap_password(ldap_user_dict['cn'], password):
+            user_name = get_or_create_ldap_user(ldap_user_dict)
+            if user_name:
+                return User.by_name(user_name)
+    except Exception as e:
+        log.error("Authentication error: %s", e)
+    return None
